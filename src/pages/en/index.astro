@@ -1,0 +1,65 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import { getCollection } from 'astro:content';
+import { CATEGORY_BY_ID } from '../../lib/categories.ts';
+import { withBase } from '../../lib/site.ts';
+
+const entries = await getCollection('enBriefings');
+const byDate = new Map<string, typeof entries>();
+for (const entry of entries) {
+  const list = byDate.get(entry.data.date) ?? [];
+  list.push(entry);
+  byDate.set(entry.data.date, list);
+}
+const dates = [...byDate.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+---
+
+<BaseLayout
+  title="English Edition"
+  description="Machine-translated English editions of the DailyInfo daily briefings, generated locally by the DailyInfo bot."
+  path="/en/"
+>
+  <article class="page-shell">
+    <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'English Edition' }]} />
+    <header class="briefing-header">
+      <div>
+        <h1>English Edition</h1>
+        <p>Machine-translated daily briefings — generated locally by <code>npm run bot -- translate</code>. This section only appears on machines that have run the bot; it is not part of the published site.</p>
+      </div>
+    </header>
+
+    {dates.length === 0 && (
+      <p class="empty-note">
+        No English translations yet. Run <code>npm run bot -- translate</code> (requires
+        OPENROUTER_API_KEY or GLM_API_KEY in <code>.env</code>), then restart the dev server.
+      </p>
+    )}
+
+    <section class="item-list">
+      {
+        dates.map(([date, dayEntries]) => (
+          <div class="item-batch">
+            <h2>{date}</h2>
+            <ul>
+              {dayEntries
+                .sort((a, b) => a.data.category.localeCompare(b.data.category))
+                .map((entry) => {
+                  const category = CATEGORY_BY_ID[entry.data.category as keyof typeof CATEGORY_BY_ID];
+                  const slug = category?.slug ?? entry.data.category;
+                  return (
+                    <li>
+                      <a href={withBase(`/en/${entry.data.date}/${slug}/`)}>
+                        {category?.label ?? entry.data.category} — {entry.data.date}
+                      </a>
+                      <small> translated {entry.data.generated_at.slice(0, 16).replace('T', ' ')}</small>
+                    </li>
+                  );
+                })}
+            </ul>
+          </div>
+        ))
+      }
+    </section>
+  </article>
+</BaseLayout>

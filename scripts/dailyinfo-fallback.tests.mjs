@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 /**
@@ -11,7 +12,7 @@ import { spawnSync } from 'node:child_process';
  * publishing leaves uncommitted content in the worktree, and the guard on the
  * NEXT scheduled run then refuses to start until someone cleans up by hand.
  */
-const project = resolve(new URL('..', import.meta.url).pathname);
+const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const root = mkdtempSync(join(tmpdir(), 'dailyinfo-fallback-tests-'));
 let passed = 0;
 
@@ -56,9 +57,13 @@ function fixture(name) {
   for (const script of ['dailyinfo-publish.mjs', 'dailyinfo-sync.mjs', 'dailyinfo-fallback.mjs']) {
     cpSync(join(project, 'scripts', script), join(repo, 'scripts', script));
   }
-  symlinkSync(join(project, 'node_modules'), join(repo, 'node_modules'), 'dir');
+  // Junctions on Windows: directory symlinks need Developer Mode/admin there,
+  // junctions do not, and for a directory target they behave identically here.
+  symlinkSync(join(project, 'node_modules'), join(repo, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   write(join(repo, 'package.json'), '{"type":"module"}\n');
-  write(join(repo, '.gitignore'), 'runtime/\n');
+  // node_modules is ignored so git never traverses the junction (git for
+  // Windows treats junctions as real directories, unlike Unix symlinks).
+  write(join(repo, '.gitignore'), 'runtime/\nnode_modules/\n');
   write(join(repo, 'src/content/items/generated/.gitkeep'), '');
   write(join(repo, 'src/content/briefings/generated/.gitkeep'), '');
   must(repo, 'git', ['add', '.']);
@@ -73,9 +78,11 @@ function fixture(name) {
   write(join(workspace, `briefings/code/github_trending_briefing_${today}.md`), '# GitHub Trending\n\n1. **Missed** — summary.');
   write(sources, JSON.stringify({ sources: [{ name: 'github_trending', category: 'code', url: 'https://github.com/trending' }] }));
 
-  const npm = join(bin, 'npm');
-  write(npm, '#!/bin/sh\nexit 0\n');
-  chmodSync(npm, 0o755);
+  // A stub npm so the publisher's gates run without a real toolchain. On
+  // Windows npm must be npm.cmd (cmd.exe resolves it via PATHEXT).
+  const npm = join(bin, process.platform === 'win32' ? 'npm.cmd' : 'npm');
+  write(npm, process.platform === 'win32' ? '@echo off\r\nexit /b 0\r\n' : '#!/bin/sh\nexit 0\n');
+  if (process.platform !== 'win32') chmodSync(npm, 0o755);
   return {
     repo,
     workspace,
@@ -87,7 +94,7 @@ function fixture(name) {
       DAILYINFO_PUBLISH_BRANCH: 'main',
       DAILYINFO_PUBLISH_REMOTE: 'origin',
       DAILYINFO_PUBLISH_REMOTE_URL: remote,
-      PATH: `${bin}:${process.env.PATH}`,
+      PATH: `${bin}${delimiter}${process.env.PATH}`,
     },
   };
 }
@@ -133,5 +140,16 @@ try {
   }
   console.log(`[dailyinfo-fallback tests] ${passed}/${passed} passed`);
 } finally {
+  // Unlink junctions/symlinks first: rmSync fails with EPERM on Windows when
+  // it encounters a directory junction inside the tree it removes.
+  const unlinkLinks = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isSymbolicLink()) { rmSync(full, { force: true, recursive: true }); continue; }
+      if (entry.isDirectory()) unlinkLinks(full);
+    }
+  };
+  unlinkLinks(root);
   rmSync(root, { recursive: true, force: true });
 }

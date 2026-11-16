@@ -29,7 +29,7 @@ try {
   // Registry display_name must reach the frontmatter, so this publisher's
   // output carries the same journal label as the backend's.
   assert.match(firstItem, /display_name: "GitHub Trending"/);
-  assert.match(briefingPath, /2026\/09\/26\/code\.md$/);
+  assert.match(briefingPath.replaceAll('\\', '/'), /2026\/09\/26\/code\.md$/);
   passed += 1;
 
   const second = syncDailyInfo(options);

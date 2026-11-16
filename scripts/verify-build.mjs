@@ -9,13 +9,14 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { SITE, absoluteUrl, withBase } from '../src/lib/site.ts';
 import { briefingRoute, dailyRoute, itemRoute } from '../src/lib/urls.ts';
 import { CATEGORIES } from '../src/lib/categories.ts';
 import { findRenderedItem } from './verify-build-helpers.mjs';
 
-const repo = new URL('..', import.meta.url).pathname;
+const repo = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(repo, 'dist');
 let passed = 0;
 let failed = 0;

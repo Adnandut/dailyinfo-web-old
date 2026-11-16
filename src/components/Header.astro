@@ -1,5 +1,6 @@
 ---
 import { SITE, withBase } from '../lib/site.ts';
+import { getCollection } from 'astro:content';
 import ThemeToggle from './ThemeToggle.astro';
 import CategoryNav from './CategoryNav.astro';
 
@@ -7,7 +8,51 @@ interface Props {
   currentPath?: string;
 }
 const { currentPath } = Astro.props;
+// The English edition only exists where the bot cache exists (local dev with
+// `npm run bot -- translate`); on deploys the collection is empty, so the
+// header link disappears and production stays exactly as before.
+const enAvailable = (await getCollection('enBriefings')).length > 0;
+const isEn = currentPath === '/en/' || currentPath?.startsWith('/en/');
 ---
+
+<header class="site-header">
+  <div class="container">
+    <div class="site-header__bar">
+      <a class="site-header__brand" href={withBase('/')} aria-label={`${SITE.name} 首页`}>
+        <span class="site-header__mark" aria-hidden="true">DI</span>
+        <span>
+          <strong class="site-header__logo">{SITE.name}</strong>
+          <span class="site-header__tagline">Research Intelligence</span>
+        </span>
+      </a>
+      <div class="site-header__desktop-nav">
+        <CategoryNav currentPath={currentPath} />
+      </div>
+      <div class="site-header__actions">
+        {enAvailable && (
+          <a class="header-lang" href={withBase('/en/')} aria-current={isEn ? 'page' : undefined} title="English edition (bot translations)">
+            EN
+          </a>
+        )}
+        <ThemeToggle />
+        <details class="mobile-menu">
+          <summary aria-label="打开导航菜单">
+            <span class="mobile-menu__icon" aria-hidden="true"></span>
+            <span class="sr-only">Menu</span>
+          </summary>
+          <div class="mobile-menu__panel">
+            {enAvailable && (
+              <a class="header-lang" href={withBase('/en/')} aria-current={isEn ? 'page' : undefined}>
+                English Edition
+              </a>
+            )}
+            <CategoryNav currentPath={currentPath} />
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+</header>
 
 <header class="site-header">
   <div class="container">

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 const CATEGORIES = new Set(['papers', 'ai_news', 'code', 'resource', 'arxiv']);
@@ -301,7 +302,7 @@ export function syncDailyInfo(options) {
     }
   }
 
-  const relative = (path) => path.slice(`${webRoot}/`.length);
+  const relative = (path) => path.slice(resolve(webRoot).length + 1).replaceAll('\\', '/');
   const result = {
     mode: options.apply ? 'apply' : 'dry-run',
     source_root: sourceRoot,
@@ -356,7 +357,7 @@ function args(argv) {
   return result;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const result = syncDailyInfo(args(process.argv.slice(2)));
     console.log(JSON.stringify(result, null, 2));

@@ -1,0 +1,59 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import { getCollection, render } from 'astro:content';
+import { CATEGORY_BY_ID } from '../../../lib/categories.ts';
+import { withBase } from '../../../lib/site.ts';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('enBriefings');
+  return entries.map((entry) => ({
+    params: {
+      date: entry.data.date,
+      // URL uses the public slug (ai_news -> ai-news); unknown categories pass through.
+      category: CATEGORY_BY_ID[entry.data.category as keyof typeof CATEGORY_BY_ID]?.slug ?? entry.data.category,
+    },
+    props: { entryId: entry.id },
+  }));
+}
+
+const { entryId } = Astro.props;
+const entry = (await getCollection('enBriefings')).find((candidate) => candidate.id === entryId);
+if (!entry) throw new Error(`English briefing not found: ${entryId}`);
+const category = CATEGORY_BY_ID[entry.data.category as keyof typeof CATEGORY_BY_ID];
+const { Content } = await render(entry);
+---
+
+<BaseLayout
+  title={`${category?.label ?? entry.data.category} Briefing ${entry.data.date} (English)`}
+  description={`English machine translation of the DailyInfo ${entry.data.category} briefing for ${entry.data.date}.`}
+  path={`/en/${entry.data.date}/${category?.slug ?? entry.data.category}/`}
+  type="article"
+  publishedTime={entry.data.generated_at}
+>
+  <article class="page-shell briefing-page">
+    <Breadcrumb
+      items={[
+        { label: 'Home', href: '/' },
+        { label: 'English Edition', href: '/en/' },
+        { label: entry.data.date },
+      ]}
+    />
+
+    <header class="briefing-header">
+      <div>
+        <h1>{category?.label ?? entry.data.category} — {entry.data.date} <small>(English)</small></h1>
+        <p>Machine-translated by the DailyInfo bot at {entry.data.generated_at}. <a href={withBase(`/daily/${entry.data.date}/${category?.slug ?? entry.data.category}/`)}>Original briefing →</a></p>
+      </div>
+    </header>
+
+    <div class="markdown-body">
+      <Content />
+    </div>
+
+    <nav class="context-navigation" aria-label="English edition navigation">
+      <a href={withBase('/en/')}>← All English editions</a>
+      <a href={withBase(`/daily/${entry.data.date}/`)}>Daily Overview →</a>
+    </nav>
+  </article>
+</BaseLayout>

@@ -47,7 +47,7 @@ function saveReport() {
 
 function run(name, command, commandArgs, options = {}) {
   const started = Date.now();
-  const result = spawnSync(command, commandArgs, { cwd: repo, encoding: 'utf8', stdio: options.capture ? 'pipe' : 'inherit' });
+  const result = spawnSync(command, commandArgs, { cwd: repo, encoding: 'utf8', stdio: options.capture ? 'pipe' : 'inherit', ...options.spawn });
   report.steps.push({ name, success: result.status === 0, duration_ms: Date.now() - started, exit_code: result.status, stdout: options.capture ? result.stdout?.trim() : undefined, stderr: options.capture ? result.stderr?.trim() : undefined });
   saveReport();
   if (result.status !== 0) throw new Error(`${name} failed with exit code ${result.status}`);
@@ -166,7 +166,10 @@ try {
   if (windowDays !== '') syncArgs.push('--window-days', windowDays);
   const sync = run('sync', process.execPath, syncArgs, { capture: true });
   report.sync = JSON.parse(sync.stdout);
-  for (const gate of ['validate', 'test', 'check', 'build']) run(`npm:${gate}`, 'npm', ['run', gate]);
+  // Windows: npm is npm.cmd, and spawning .cmd files requires a shell there.
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const npmSpawn = process.platform === 'win32' ? { shell: true } : {};
+  for (const gate of ['validate', 'test', 'check', 'build']) run(`npm:${gate}`, npmCommand, ['run', gate], { spawn: npmSpawn });
   report.build_success = true;
 
   if (publish) {

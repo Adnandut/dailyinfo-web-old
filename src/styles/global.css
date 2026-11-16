@@ -395,6 +395,25 @@ a {
   font: 600 0.68rem/1 var(--font-body);
 }
 
+.header-lang {
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 0.5rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: 600 0.68rem/1 var(--font-body);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.header-lang:hover,
+.header-lang[aria-current='page'] {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
 .theme-toggle {
   gap: 0.38rem;
   padding-inline: 0.5rem;
