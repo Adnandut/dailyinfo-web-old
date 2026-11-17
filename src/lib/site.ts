@@ -29,7 +29,10 @@
  */
 
 function normalizeOrigin(origin: string): string {
-  return origin.trim().replace(/\/+$/, '');
+  // Pages hosts are case-insensitive but every generator (@astrojs/sitemap,
+  // rss) emits the lowercase form; normalize here so artifact checks and the
+  // generated URLs always compare equal.
+  return origin.trim().replace(/\/+$/, '').toLowerCase();
 }
 
 /** '' means root deployment ('/' or '' input); otherwise '/segment' without trailing slash. */
