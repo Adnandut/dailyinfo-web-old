@@ -543,27 +543,70 @@ function slugifyFile(text) {
   return String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'paper';
 }
 
+function normalizeSearchQuery(query) {
+  // Colons etc. are arXiv field-query syntax — a pasted title like
+  // "SWIFT: Sample-Wise ..." breaks the API unless stripped first.
+  return String(query).replaceAll(/["']/g, ' ').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function parseArxivEntry(block) {
+  const id = block.match(/<id>([^<]+)<\/id>/)?.[1] ?? '';
+  const arxivId = id.match(/abs\/([^?/]+)/)?.[1] ?? '';
+  return {
+    title: stripJats(block.match(/<title>([\s\S]*?)<\/title>/)?.[1]),
+    abstract: stripJats(block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]),
+    year: block.match(/<published>(\d{4})/)?.[1] ?? '',
+    venue: 'arXiv',
+    arxivId,
+    doi: block.match(/<arxiv:doi[^>]*>([^<]+)<\/arxiv:doi>/)?.[1] ?? '',
+    pdf: arxivId ? `https://arxiv.org/pdf/${arxivId}` : '',
+    citations: null,
+    provider: 'arXiv',
+    url: id,
+  };
+}
+
 async function searchArxiv(query) {
-  const url = `https://export.arxiv.org/api/query?search_query=${encodeURIComponent(`all:${query}`)}&max_results=${FETCH_TARGETS}&sortBy=relevance`;
-  const xml = await httpGetText(url);
-  const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((match) => {
-    const block = match[1];
-    const id = block.match(/<id>([^<]+)<\/id>/)?.[1] ?? '';
-    const arxivId = id.match(/abs\/([^?/]+)/)?.[1] ?? '';
-    return {
-      title: stripJats(block.match(/<title>([\s\S]*?)<\/title>/)?.[1]),
-      abstract: stripJats(block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]),
-      year: block.match(/<published>(\d{4})/)?.[1] ?? '',
-      venue: 'arXiv',
-      arxivId,
-      doi: block.match(/<arxiv:doi[^>]*>([^<]+)<\/arxiv:doi>/)?.[1] ?? '',
-      pdf: arxivId ? `https://arxiv.org/pdf/${arxivId}` : '',
-      citations: null,
-      provider: 'arXiv',
-      url: id,
-    };
-  }).filter((paper) => paper.title);
-  return entries;
+  const cleaned = normalizeSearchQuery(query);
+  // Exact phrase first, then plain keywords — brand-new papers need the
+  // loose form when the phrase index lags.
+  for (const attempt of [`"${cleaned}"`, cleaned]) {
+    const url = `https://export.arxiv.org/api/query?search_query=${encodeURIComponent(`all:${attempt}`)}&max_results=${FETCH_TARGETS}&sortBy=relevance`;
+    try {
+      const xml = await httpGetText(url);
+      const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)]
+        .map((match) => parseArxivEntry(match[1]))
+        .filter((paper) => paper.title);
+      if (entries.length) return entries;
+    } catch {
+      /* next attempt */
+    }
+  }
+  return [];
+}
+
+/** Deterministic metadata lookup by arXiv id (abs/pdf/html URLs, bare ids). */
+async function fetchArxivById(arxivId) {
+  const clean = arxivId.replace(/v\d+$/i, '');
+  try {
+    const xml = await httpGetText(`https://export.arxiv.org/api/query?id_list=${clean}&max_results=1`);
+    const entry = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)][0];
+    if (entry) return parseArxivEntry(entry[1]);
+  } catch {
+    /* fall through to the synthetic record */
+  }
+  return {
+    title: `arXiv:${clean}`,
+    abstract: '',
+    year: '',
+    venue: 'arXiv',
+    arxivId: clean,
+    doi: '',
+    pdf: `https://arxiv.org/pdf/${clean}`,
+    citations: null,
+    provider: 'arXiv',
+    url: `https://arxiv.org/abs/${clean}`,
+  };
 }
 
 async function searchSemanticScholar(query) {
@@ -615,20 +658,16 @@ async function resolveDoi(doi) {
 }
 
 async function resolvePaperUrl(rawUrl) {
-  const arxivAbs = rawUrl.match(/arxiv\.org\/abs\/([^\s?/]+)/i)?.[1];
-  const arxivPdf = rawUrl.match(/arxiv\.org\/pdf\/([^\s?/.]+)/i)?.[1];
-  const arxivId = arxivAbs ?? arxivPdf;
-  if (arxivId) {
-    const paper = (await searchArxiv(`id:${arxivId}`))[0]
-      ?? { title: `arXiv:${arxivId}`, abstract: '', year: '', venue: 'arXiv', arxivId, doi: '', pdf: `https://arxiv.org/pdf/${arxivId}`, citations: null, provider: 'arXiv', url: `https://arxiv.org/abs/${arxivId}` };
-    return [paper];
-  }
+  // abs/, pdf/, and the newer html/ URLs all carry the same id; bare ids work too.
+  const arxivId = rawUrl.match(/arxiv\.(?:org|net)\/(?:abs|pdf|html)\/([^\s?/#]+)/i)?.[1]
+    ?? (/^\d{4}\.\d{4,5}(v\d+)?$/i.test(rawUrl.trim()) ? rawUrl.trim() : '');
+  if (arxivId) return [await fetchArxivById(arxivId)];
   // Any URL carrying a DOI works: doi.org, and publisher pages that embed it
   // in their path (Wiley/AGU /doi/..., Nature, ScienceDirect, Springer, ...).
   // The capture stops at query/hash/whitespace.
   const doi = rawUrl.match(/(10\.\d{4,9}\/[^\s"'?#&]+)/i)?.[1];
   if (doi) return [await resolveDoi(doi)];
-  throw new Error('Unsupported URL — use an arXiv link, a bare DOI, any publisher URL containing a DOI, or a search query.');
+  throw new Error('Unsupported URL — use an arXiv link (abs/pdf/html), a bare DOI, any publisher URL containing a DOI, or a search query.');
 }
 
 function mergeCandidates(groups) {
@@ -825,6 +864,15 @@ async function fetchCommand(corpus, rawArgument) {
       searchSemanticScholar(argument).catch(() => []),
     ]);
     candidates = mergeCandidates([s2, arxiv]);
+    if (!candidates.length) {
+      // Brand-new papers are often not indexed by the search APIs yet, but
+      // your own DailyInfo corpus already tracks them — use its source link.
+      const localMatch = search(corpus, normalizeSearchQuery(argument))[0];
+      if (localMatch?.sourceUrl) {
+        console.log(`[agent] not indexed by the search APIs yet — found it in your corpus: [${localMatch.category}/${localMatch.id}]`);
+        candidates = await resolvePaperUrl(localMatch.sourceUrl);
+      }
+    }
   }
   if (!candidates.length) {
     console.log(`\nNothing found for "${argument}". Try a shorter keyword set or an exact title in quotes.`);
