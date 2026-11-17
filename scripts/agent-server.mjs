@@ -12,9 +12,11 @@
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { loadItems, loadBriefings, runCommand, listDates } from './dailyinfo-bot.mjs';
+import { loadItems, loadBriefings, runCommand, listDates, getLastFetchedPaper } from './dailyinfo-bot.mjs';
+import { pingZotero, saveToZoteroLocal, writeRis } from './zotero.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const papersDir = join(repo, 'runtime/papers');
 const PORT = Number(process.env.AGENT_UI_PORT) || 4323;
 const HOST = '127.0.0.1';
 
@@ -125,6 +127,9 @@ const PAGE = `<!doctype html>
   button { font: inherit; font-weight: 600; padding: 9px 18px; border: 0; border-radius: 8px;
            cursor: pointer; background: light-dark(#2b6cb0, #2f6fce); color: #fff; }
   button:disabled { opacity: .55; cursor: default; }
+  .save-actions { display: flex; gap: 8px; align-items: center; max-width: 860px; margin: -4px auto 16px; }
+  .save-actions button { background: light-dark(#3d7a4f, #2f7a45); padding: 6px 12px; font-size: 13px; }
+  .save-actions .save-msg { font-size: 12.5px; color: light-dark(#6a7280, #9aa3af); }
   .hints { max-width: 860px; margin: 0 auto 10px; font-size: 12.5px; color: light-dark(#6a7280, #9aa3af); }
   .hints code { background: light-dark(#eceef1, #23262c); padding: 1px 6px; border-radius: 5px; }
 </style>
@@ -184,6 +189,31 @@ const PAGE = `<!doctype html>
     log.scrollTop = log.scrollHeight;
   }
 
+  function addSaveActions(out) {
+    if (out.parentElement.querySelector('.save-actions')) return;
+    const bar = document.createElement('div');
+    bar.className = 'save-actions';
+    bar.innerHTML = '<button data-act="zotero" class="ghost">Save to Zotero</button>' +
+                    '<button data-act="ris" class="ghost">Save .ris (Mendeley)</button>' +
+                    '<span class="save-msg"></span>';
+    out.parentElement.appendChild(bar);
+    bar.addEventListener('click', async (e) => {
+      const button = e.target.closest('button[data-act]');
+      if (!button) return;
+      const msg = bar.querySelector('.save-msg');
+      button.disabled = true;
+      msg.textContent = '…';
+      try {
+        const result = await fetch('/api/' + (button.dataset.act === 'zotero' ? 'zotero/save' : 'ris'),
+                                   { method: 'POST' }).then(r => r.json());
+        msg.textContent = result.message || (result.ok ? 'done' : 'failed');
+      } catch (err) {
+        msg.textContent = 'failed: ' + err.message;
+      }
+      button.disabled = false;
+    });
+  }
+
   f.addEventListener('submit', (e) => {
     e.preventDefault();
     if (busy) return;
@@ -202,6 +232,9 @@ const PAGE = `<!doctype html>
             render(out, job);
             if (job.status !== 'running') {
               clearInterval(poll); busy = false; go.disabled = false; q.focus();
+              if (job.status === 'done' && /^fetch\\b/.test(job.command)) {
+                addSaveActions(out);
+              }
             }
           });
         }, 1200);
@@ -229,7 +262,22 @@ createServer(async (req, res) => {
         corpus: `${corpus.items.length} items · ${corpus.briefings.length} briefings · ${listDates(corpus.briefings).length} dates`,
         busy: Boolean(activeJob),
         queue: queue.length,
+        zotero: await pingZotero(),
       });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/zotero/save') {
+      const paper = getLastFetchedPaper();
+      if (!paper) { json(res, 400, { ok: false, message: 'No paper fetched yet — run a fetch first.' }); return; }
+      if (!(await pingZotero())) { json(res, 200, { ok: false, message: 'Zotero is not running — open the Zotero desktop app and try again.' }); return; }
+      json(res, 200, await saveToZoteroLocal(paper));
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/ris') {
+      const paper = getLastFetchedPaper();
+      if (!paper) { json(res, 400, { ok: false, message: 'No paper fetched yet — run a fetch first.' }); return; }
+      const path = writeRis(paper, papersDir);
+      json(res, 200, { ok: true, message: `Citation file written: ${path} — drag it onto the Mendeley window.` });
       return;
     }
     if (req.method === 'POST' && url.pathname === '/api/job') {

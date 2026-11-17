@@ -549,22 +549,35 @@ function normalizeSearchQuery(query) {
   return String(query).replaceAll(/["']/g, ' ').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function parseArxivEntry(block) {
-  const id = block.match(/<id>([^<]+)<\/id>/)?.[1] ?? '';
-  const arxivId = id.match(/abs\/([^?/]+)/)?.[1] ?? '';
-  return {
-    title: stripJats(block.match(/<title>([\s\S]*?)<\/title>/)?.[1]),
-    abstract: stripJats(block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]),
-    year: block.match(/<published>(\d{4})/)?.[1] ?? '',
-    venue: 'arXiv',
-    arxivId,
-    doi: block.match(/<arxiv:doi[^>]*>([^<]+)<\/arxiv:doi>/)?.[1] ?? '',
-    pdf: arxivId ? `https://arxiv.org/pdf/${arxivId}` : '',
-    citations: null,
-    provider: 'arXiv',
-    url: id,
-  };
+function splitName(name) {
+  // "Jane Alice Doe" -> { family: 'Doe', given: 'Jane Alice' } — heuristic;
+  // bibliography-grade name parsing is out of scope, this matches what
+  // Crossref/Semantic Scholar supply well enough for citation records.
+  const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { family: 'Unknown', given: '' };
+  if (parts.length === 1) return { family: parts[0], given: '' };
+  return { family: parts[parts.length - 1], given: parts.slice(0, -1).join(' ') };
 }
+
+function parseArxivEntry(block) {
+    const id = block.match(/<id>([^<]+)<\/id>/)?.[1] ?? '';
+    const arxivId = id.match(/abs\/([^?/]+)/)?.[1] ?? '';
+    const authors = [...block.matchAll(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/g)]
+      .map((match) => splitName(stripJats(match[1])));
+    return {
+      title: stripJats(block.match(/<title>([\s\S]*?)<\/title>/)?.[1]),
+      authors,
+      abstract: stripJats(block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]),
+      year: block.match(/<published>(\d{4})/)?.[1] ?? '',
+      venue: 'arXiv',
+      arxivId,
+      doi: block.match(/<arxiv:doi[^>]*>([^<]+)<\/arxiv:doi>/)?.[1] ?? '',
+      pdf: arxivId ? `https://arxiv.org/pdf/${arxivId}` : '',
+      citations: null,
+      provider: 'arXiv',
+      url: id,
+    };
+  }
 
 async function searchArxiv(query) {
   const cleaned = normalizeSearchQuery(query);
@@ -597,6 +610,7 @@ async function fetchArxivById(arxivId) {
   }
   return {
     title: `arXiv:${clean}`,
+    authors: [],
     abstract: '',
     year: '',
     venue: 'arXiv',
@@ -610,46 +624,53 @@ async function fetchArxivById(arxivId) {
 }
 
 async function searchSemanticScholar(query) {
-  const fields = ['title', 'abstract', 'year', 'venue', 'externalIds', 'openAccessPdf', 'citationCount'].join(',');
-  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${FETCH_TARGETS}&fields=${fields}`;
-  const json = JSON.parse(await httpGetText(url));
-  return (json.data ?? []).map((paper) => ({
-    title: cleanWhitespace(paper.title),
-    abstract: cleanWhitespace(paper.abstract ?? ''),
-    year: paper.year ?? '',
-    venue: paper.venue || (paper.externalIds?.ArXiv ? 'arXiv' : ''),
-    arxivId: paper.externalIds?.ArXiv ?? '',
-    doi: paper.externalIds?.DOI ?? '',
-    pdf: paper.openAccessPdf?.url ?? '',
-    citations: paper.citationCount ?? null,
-    provider: 'Semantic Scholar',
-    url: paper.externalIds?.DOI ? `https://doi.org/${paper.externalIds.DOI}` : (paper.externalIds?.ArXiv ? `https://arxiv.org/abs/${paper.externalIds.ArXiv}` : ''),
-  })).filter((paper) => paper.title);
-}
+    const fields = ['title', 'abstract', 'year', 'venue', 'authors', 'externalIds', 'openAccessPdf', 'citationCount'].join(',');
+    const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${FETCH_TARGETS}&fields=${fields}`;
+    const json = JSON.parse(await httpGetText(url));
+    return (json.data ?? []).map((paper) => ({
+      title: cleanWhitespace(paper.title),
+      authors: (paper.authors ?? []).map((author) => splitName(author.name)),
+      abstract: cleanWhitespace(paper.abstract ?? ''),
+      year: paper.year ?? '',
+      venue: paper.venue || (paper.externalIds?.ArXiv ? 'arXiv' : ''),
+      arxivId: paper.externalIds?.ArXiv ?? '',
+      doi: paper.externalIds?.DOI ?? '',
+      pdf: paper.openAccessPdf?.url ?? '',
+      citations: paper.citationCount ?? null,
+      provider: 'Semantic Scholar',
+      url: paper.externalIds?.DOI ? `https://doi.org/${paper.externalIds.DOI}` : (paper.externalIds?.ArXiv ? `https://arxiv.org/abs/${paper.externalIds.ArXiv}` : ''),
+    })).filter((paper) => paper.title);
+  }
 
 async function resolveDoi(doi) {
   const json = JSON.parse(await httpGetText(`https://api.crossref.org/works/${encodeURIComponent(doi)}`));
   const meta = json.message ?? {};
   const year = meta.issued?.['date-parts']?.[0]?.[0] ?? '';
-  const paper = {
-    title: cleanWhitespace(meta.title?.[0] ?? ''),
-    abstract: stripJats(meta.abstract ?? ''),
-    year: String(year),
-    venue: cleanWhitespace(meta['container-title']?.[0] ?? ''),
-    arxivId: '',
-    doi,
-    pdf: '',
-    citations: null,
-    provider: 'Crossref',
-    url: `https://doi.org/${doi}`,
-  };
+    const paper = {
+      title: cleanWhitespace(meta.title?.[0] ?? ''),
+      authors: (meta.author ?? []).map((author) => author.family
+        ? { family: author.family, given: author.given ?? '' }
+        : splitName(author.name ?? '')),
+      abstract: stripJats(meta.abstract ?? ''),
+      year: String(year),
+      venue: cleanWhitespace(meta['container-title']?.[0] ?? ''),
+      arxivId: '',
+      doi,
+      pdf: '',
+      citations: null,
+      provider: 'Crossref',
+      url: `https://doi.org/${doi}`,
+    };
   if (!paper.abstract) {
     // Crossref often omits abstracts (e.g. Nature) — Semantic Scholar has them.
     try {
-      const enrichment = JSON.parse(await httpGetText(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=abstract,openAccessPdf,externalIds`));
-      paper.abstract = cleanWhitespace(enrichment.abstract ?? '');
-      paper.pdf ||= enrichment.openAccessPdf?.url ?? '';
-      paper.arxivId ||= enrichment.externalIds?.ArXiv ?? '';
+        const enrichment = JSON.parse(await httpGetText(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=abstract,authors,openAccessPdf,externalIds`));
+        paper.abstract = cleanWhitespace(enrichment.abstract ?? '');
+        if (!paper.authors.length && enrichment.authors?.length) {
+          paper.authors = enrichment.authors.map((author) => splitName(author.name));
+        }
+        paper.pdf ||= enrichment.openAccessPdf?.url ?? '';
+        paper.arxivId ||= enrichment.externalIds?.ArXiv ?? '';
     } catch {
       /* best-effort enrichment */
     }
@@ -677,14 +698,15 @@ function mergeCandidates(groups) {
     const key = cleanWhitespace(paper.title).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60);
     const existing = seen.get(key);
     if (!existing) seen.set(key, paper);
-    else {
-      existing.abstract ||= paper.abstract;
-      existing.pdf ||= paper.pdf;
-      existing.doi ||= paper.doi;
-      existing.arxivId ||= paper.arxivId;
-      existing.citations ??= paper.citations;
-      existing.venue ||= paper.venue;
-    }
+      else {
+        existing.abstract ||= paper.abstract;
+        existing.pdf ||= paper.pdf;
+        existing.doi ||= paper.doi;
+        existing.arxivId ||= paper.arxivId;
+        existing.citations ??= paper.citations;
+        existing.venue ||= paper.venue;
+        if (!existing.authors?.length) existing.authors = paper.authors ?? [];
+      }
   }
   return [...seen.values()].slice(0, FETCH_TARGETS);
 }
@@ -784,10 +806,24 @@ function printCandidates(candidates) {
   console.log('');
 }
 
+let lastFetchedPaper = null;
+
+/** The most recent paper the agent presented — the save targets (zotero/ris)
+ * operate on this, always on explicit user action. */
+function getLastFetchedPaper() {
+  return lastFetchedPaper;
+}
+
 async function presentAndSummarize(paper, { allowUniLink = false } = {}) {
-  console.log(`\nPaper: ${paper.title}`);
-  if (paper.venue || paper.year) console.log(`Venue: ${[paper.venue, paper.year].filter(Boolean).join(', ')}`);
-  let filePath = '';
+    lastFetchedPaper = paper;
+    console.log(`\nPaper: ${paper.title}`);
+    if (paper.authors?.length) {
+      const first = paper.authors[0];
+      const suffix = paper.authors.length > 1 ? ' et al.' : '';
+      console.log(`Authors: ${[first.given, first.family].filter(Boolean).join(' ')}${suffix}`);
+    }
+    if (paper.venue || paper.year) console.log(`Venue: ${[paper.venue, paper.year].filter(Boolean).join(', ')}`);
+    let filePath = '';
   process.stdout.write('[agent] looking for an open-access PDF…\n');
   if (paper.abstract || paper.title) filePath = await findOpenPdf(paper);
   if (filePath) {
@@ -798,6 +834,7 @@ async function presentAndSummarize(paper, { allowUniLink = false } = {}) {
     console.log(`[agent] ${text.length.toLocaleString()} chars extracted — summarizing…\n`);
     const summary = await summarizeText(text);
     console.log(`\n${summary}\n`);
+    console.log('Keep it: type "zotero" (save to Zotero library) or "ris" (citation file for Mendeley).');
     return;
   }
   // Paywalled — hybrid fallback: institutional link (only if you confirm) + drop folder.
@@ -845,6 +882,7 @@ University access (WebVPN) — 3 steps:
     );
     console.log(summary);
   }
+  console.log('\nKeep it: type "zotero" (save to Zotero library) or "ris" (citation file for Mendeley).');
 }
 
 async function fetchCommand(corpus, rawArgument) {
@@ -854,7 +892,7 @@ async function fetchCommand(corpus, rawArgument) {
   if (!argument) throw new Error('Usage: fetch <query | arxiv-url | doi>   e.g. fetch "attention is all you need"');
   process.stdout.write('[agent] searching the web…\n');
   let candidates;
-  if (/^https?:\/\//i.test(argument)) {
+  if (/^https?:\/\//i.test(argument) || /^\d{4}\.\d{4,5}(v\d+)?$/i.test(argument)) {
     candidates = await resolvePaperUrl(argument);
   } else if (/^10\.\d{4,9}\//.test(argument)) {
     candidates = [await resolveDoi(argument)];
@@ -910,15 +948,36 @@ async function summarizeCommand(argument) {
 }
 
 function papersCommand() {
-  const files = existsSync(papersDir) ? readdirSync(papersDir).filter((name) => name.endsWith('.pdf')) : [];
-  if (!files.length) {
-    console.log('\nNo papers downloaded yet. They land in runtime/papers/ when you run: fetch <query>\n');
-    return;
+    const files = existsSync(papersDir) ? readdirSync(papersDir).filter((name) => name.endsWith('.pdf')) : [];
+    if (!files.length) {
+      console.log('\nNo papers downloaded yet. They land in runtime/papers/ when you run: fetch <query>\n');
+      return;
+    }
+    console.log(`\n${files.length} paper(s) in runtime/papers/:\n`);
+    for (const file of files) console.log(`  ${file}`);
+    console.log('');
   }
-  console.log(`\n${files.length} paper(s) in runtime/papers/:\n`);
-  for (const file of files) console.log(`  ${file}`);
-  console.log('');
-}
+
+  async function zoteroCommand() {
+    const paper = getLastFetchedPaper();
+    if (!paper) throw new Error('No paper fetched in this session yet — run fetch first.');
+    const { saveToZoteroLocal, pingZotero } = await import('./zotero.mjs');
+    if (!(await pingZotero())) {
+      console.log('\nZotero is not running. Open the Zotero desktop app, then run: zotero\n');
+      return;
+    }
+    const outcome = await saveToZoteroLocal(paper);
+    console.log(`\n${outcome.message}\n`);
+  }
+
+  async function risCommand() {
+    const paper = getLastFetchedPaper();
+    if (!paper) throw new Error('No paper fetched in this session yet — run fetch first.');
+    const { writeRis } = await import('./zotero.mjs');
+    const path = writeRis(paper);
+    console.log(`\nCitation file written: ${path}`);
+    console.log('Import into Mendeley: drag the file onto the Mendeley window (or File -> Import).\n');
+  }
 
 // ---------------------------------------------------------------------------
 // CLI / REPL
@@ -937,6 +996,8 @@ const HELP = `DailyInfo Bot — English translation + Q&A + paper agent
   summarize <pdf-name>          summarize a PDF from runtime/papers/ (drop paywalled
                                 PDFs there when the agent can't fetch them itself)
   papers                        list downloaded papers
+  zotero                        save the last fetched paper to your Zotero library
+  ris                           write a citation file (runtime/papers/*.ris) for Mendeley
   ask <question>     search the corpus, answer in English with citations
   search <keywords>  raw search, no LLM (works without an API key)
   dates              dates that have briefings
@@ -1017,9 +1078,15 @@ async function runCommand(corpus, input) {
     case 'summarize':
       await summarizeCommand(argument);
       return true;
-    case 'papers':
-      papersCommand();
-      return true;
+      case 'papers':
+        papersCommand();
+        return true;
+      case 'zotero':
+        await zoteroCommand();
+        return true;
+      case 'ris':
+        await risCommand();
+        return true;
     case 'exit':
     case 'quit':
       return false;
@@ -1086,4 +1153,5 @@ export {
   askCommand,
   fetchCommand,
   searchCommand,
+  getLastFetchedPaper,
 };
