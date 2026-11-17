@@ -1067,7 +1067,23 @@ async function main() {
   readline.close();
 }
 
-main().catch((error) => {
-  console.error(`[bot] ${error.message}`);
-  process.exitCode = 1;
-});
+// Only run the CLI/REPL when executed directly — the agent server imports
+// this module for its functions.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(`[bot] ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+export {
+  loadItems,
+  loadBriefings,
+  runCommand,
+  listDates,
+  search,
+  translateCommand,
+  askCommand,
+  fetchCommand,
+  searchCommand,
+};

@@ -20,6 +20,7 @@
     "dailyinfo:publish": "node scripts/dailyinfo-publish.mjs",
     "dailyinfo:fallback": "node scripts/dailyinfo-fallback.mjs",
     "bot": "node --use-env-proxy --env-file-if-exists=.env scripts/dailyinfo-bot.mjs",
+    "agent-ui": "node --use-env-proxy --env-file-if-exists=.env scripts/agent-server.mjs",
     "ci": "npm run validate && npm run test && npm run check && npm run build"
   },
   "dependencies": {
