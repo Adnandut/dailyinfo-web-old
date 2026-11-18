@@ -518,9 +518,10 @@ function searchCommand(corpus, query) {
     console.log(`\nNo matches for "${query}".`);
     return;
   }
-  console.log(`\n${matches.length} match(es) for "${query}":\n`);
+  console.log(`\n${matches.length} match(es) for "${query}" (best first):\n`);
   for (const item of matches) {
-    console.log(`  [${item.category}] ${item.id}`);
+    const score = Math.round(relevanceScore(item, query) * 100);
+    console.log(`  [${item.category}] ${item.id} — ${score}% title match`);
     console.log(`    ${item.title}`);
     if (item.source) console.log(`    source: ${item.source} | ${item.publishedAt.slice(0, 10)}`);
   }
@@ -1268,6 +1269,7 @@ export {
   runCommand,
   listDates,
   search,
+  relevanceScore,
   translateCommand,
   askCommand,
   fetchCommand,
