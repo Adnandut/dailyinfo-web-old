@@ -518,16 +518,26 @@ let candidatePicker = null;
  * one-shot mode requires --uni. No credentials exist anywhere in this script. */
 let uniLinkConfirmer = null;
 
-function httpGetText(url) {
-  return fetch(url, {
-    headers: { 'User-Agent': BROWSER_UA, Accept: '*/*' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  }).then(async (res) => {
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-    return res.text();
-  });
-}
+async function httpGetText(url, { retries = 1 } = {}) {
+    // Scholarly APIs rate-limit in bursts (S2 especially); a short retry
+    // absorbs transient 429/5xx without failing the whole search.
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          headers: { 'User-Agent': BROWSER_UA, Accept: '*/*' },
+          redirect: 'follow',
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+        return await response.text();
+      } catch (error) {
+        lastError = error;
+        if (attempt < retries) await new Promise((resolveDelay) => setTimeout(resolveDelay, 2000));
+      }
+    }
+    throw lastError;
+  }
 
 function cleanWhitespace(text) {
   return String(text ?? '').replaceAll(/\s+/g, ' ').trim();
@@ -645,10 +655,13 @@ async function searchSemanticScholar(query) {
 /** Crossref bibliographic search — the index that covers JOURNAL papers
  * (Journal of Hydrology, Nature, ...) that never touch arXiv. */
 async function searchCrossref(query) {
-  const cleaned = normalizeSearchQuery(query);
-  const select = ['DOI', 'title', 'author', 'issued', 'container-title', 'abstract'].join(',');
-  const url = `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(cleaned)}&rows=${FETCH_TARGETS}&select=${select}`;
-  const json = JSON.parse(await httpGetText(url));
+    const cleaned = normalizeSearchQuery(query);
+    const select = ['DOI', 'title', 'author', 'issued', 'container-title', 'abstract'].join(',');
+    // mailto joins Crossref's "polite pool" — far better rate limits than the
+    // anonymous shared pool that bursts into 429s.
+    const mailto = process.env.UNPAYWALL_EMAIL ? `&mailto=${encodeURIComponent(process.env.UNPAYWALL_EMAIL)}` : '';
+    const url = `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(cleaned)}&rows=${FETCH_TARGETS}&select=${select}${mailto}`;
+    const json = JSON.parse(await httpGetText(url, { retries: 2 }));
   return (json.message?.items ?? []).map((meta) => ({
     title: cleanWhitespace(meta.title?.[0] ?? ''),
     authors: (meta.author ?? []).map((author) => author.family
@@ -947,9 +960,12 @@ async function fetchCommand(corpus, rawArgument) {
       if (!candidates.length) {
         // Brand-new papers are often not indexed by the search APIs yet, but
         // your own DailyInfo corpus already tracks them — use its source link.
-        const localMatch = search(corpus, normalizeSearchQuery(argument))[0];
-        if (localMatch?.sourceUrl) {
-          console.log(`[agent] not indexed by the search APIs yet — found it in your corpus: [${localMatch.category}/${localMatch.id}]`);
+        // Same relevance gate as auto-pick: a single shared keyword is not a
+        // match, otherwise a stray dataset item gets fetched instead.
+        const localMatch = search(corpus, normalizeSearchQuery(argument))
+          .find((item) => item.sourceUrl && relevanceScore({ title: item.title }, argument) >= 0.55);
+        if (localMatch) {
+          console.log(`[agent] not indexed by the search APIs yet — found it in your corpus: [${localMatch.category}/${localMatch.id}] (${localMatch.title})`);
           candidates = await resolvePaperUrl(localMatch.sourceUrl);
         }
       }
