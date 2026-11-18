@@ -642,6 +642,30 @@ async function searchSemanticScholar(query) {
     })).filter((paper) => paper.title);
   }
 
+/** Crossref bibliographic search — the index that covers JOURNAL papers
+ * (Journal of Hydrology, Nature, ...) that never touch arXiv. */
+async function searchCrossref(query) {
+  const cleaned = normalizeSearchQuery(query);
+  const select = ['DOI', 'title', 'author', 'issued', 'container-title', 'abstract'].join(',');
+  const url = `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(cleaned)}&rows=${FETCH_TARGETS}&select=${select}`;
+  const json = JSON.parse(await httpGetText(url));
+  return (json.message?.items ?? []).map((meta) => ({
+    title: cleanWhitespace(meta.title?.[0] ?? ''),
+    authors: (meta.author ?? []).map((author) => author.family
+      ? { family: author.family, given: author.given ?? '' }
+      : splitName(author.name ?? '')),
+    abstract: stripJats(meta.abstract ?? ''),
+    year: String(meta.issued?.['date-parts']?.[0]?.[0] ?? ''),
+    venue: cleanWhitespace(meta['container-title']?.[0] ?? ''),
+    arxivId: '',
+    doi: meta.DOI ?? '',
+    pdf: '',
+    citations: null,
+    provider: 'Crossref',
+    url: meta.DOI ? `https://doi.org/${meta.DOI}` : '',
+  })).filter((paper) => paper.title);
+}
+
 async function resolveDoi(doi) {
   const json = JSON.parse(await httpGetText(`https://api.crossref.org/works/${encodeURIComponent(doi)}`));
   const meta = json.message ?? {};
@@ -797,11 +821,20 @@ async function summarizeText(text) {
   );
 }
 
-function printCandidates(candidates) {
+/** Share of the query's title tokens present in the candidate title (0-1). */
+function relevanceScore(paper, query) {
+  const tokens = [...new Set(normalizeSearchQuery(query).toLowerCase().split(/\s+/).filter((token) => token.length > 2))];
+  if (!tokens.length) return 0;
+  const title = paper.title.toLowerCase();
+  return tokens.filter((token) => title.includes(token)).length / tokens.length;
+}
+
+function printCandidates(candidates, scores = []) {
   console.log(`\nFound ${candidates.length} candidate(s):\n`);
   candidates.forEach((paper, index) => {
+    const score = scores[index] != null ? ` · ${Math.round(scores[index] * 100)}% match` : '';
     console.log(`  ${index + 1}. [${paper.year || '????'}] ${paper.title}`);
-    console.log(`     ${[paper.venue, paper.provider, paper.citations != null ? `${paper.citations} citations` : ''].filter(Boolean).join(' · ')}`);
+    console.log(`     ${[paper.venue, paper.provider, paper.citations != null ? `${paper.citations} citations` : ''].filter(Boolean).join(' · ')}${score}`);
   });
   console.log('');
 }
@@ -896,37 +929,53 @@ async function fetchCommand(corpus, rawArgument) {
     candidates = await resolvePaperUrl(argument);
   } else if (/^10\.\d{4,9}\//.test(argument)) {
     candidates = [await resolveDoi(argument)];
-  } else {
-    const [arxiv, s2] = await Promise.all([
-      searchArxiv(argument).catch(() => []),
-      searchSemanticScholar(argument).catch(() => []),
-    ]);
-    candidates = mergeCandidates([s2, arxiv]);
-    if (!candidates.length) {
-      // Brand-new papers are often not indexed by the search APIs yet, but
-      // your own DailyInfo corpus already tracks them — use its source link.
-      const localMatch = search(corpus, normalizeSearchQuery(argument))[0];
-      if (localMatch?.sourceUrl) {
-        console.log(`[agent] not indexed by the search APIs yet — found it in your corpus: [${localMatch.category}/${localMatch.id}]`);
-        candidates = await resolvePaperUrl(localMatch.sourceUrl);
+    } else {
+      const [arxiv, s2, crossref] = await Promise.all([
+        searchArxiv(argument).catch(() => []),
+        searchSemanticScholar(argument).catch(() => []),
+        searchCrossref(argument).catch(() => []),
+      ]);
+      candidates = mergeCandidates([crossref, s2, arxiv]);
+      if (!candidates.length) {
+        // Brand-new papers are often not indexed by the search APIs yet, but
+        // your own DailyInfo corpus already tracks them — use its source link.
+        const localMatch = search(corpus, normalizeSearchQuery(argument))[0];
+        if (localMatch?.sourceUrl) {
+          console.log(`[agent] not indexed by the search APIs yet — found it in your corpus: [${localMatch.category}/${localMatch.id}]`);
+          candidates = await resolvePaperUrl(localMatch.sourceUrl);
+        }
       }
     }
-  }
-  if (!candidates.length) {
-    console.log(`\nNothing found for "${argument}". Try a shorter keyword set or an exact title in quotes.`);
-    return;
-  }
-  let index = 0;
-  if (pickMatch) {
-    index = Math.min(Number(pickMatch[1]) - 1, candidates.length - 1);
-  } else if (candidates.length > 1 && candidatePicker) {
-    printCandidates(candidates);
-    index = await candidatePicker(candidates.length);
-    if (index < 0) return;
-  } else {
-    printCandidates(candidates);
-    if (candidates.length > 1) console.log('(auto-picking 1 — rerun with --pick N to choose another)\n');
-  }
+    if (!candidates.length) {
+      console.log(`\nNothing found for "${argument}". Try a shorter keyword set or an exact title in quotes.`);
+      return;
+    }
+    // Relevance gate: the top candidate must share enough of the query's
+    // title tokens before the agent is allowed to choose on its own —
+    // otherwise the list is shown and the user decides.
+    const AUTO_PICK_THRESHOLD = 0.55;
+    const scores = candidates.map((candidate) => relevanceScore(candidate, argument));
+    candidates = candidates
+      .map((candidate, position) => ({ candidate, position }))
+      .sort((a, b) => scores[b.position] - scores[a.position])
+      .map((entry) => entry.candidate);
+    let index = 0;
+    if (pickMatch) {
+      index = Math.min(Number(pickMatch[1]) - 1, candidates.length - 1);
+    } else if (candidates.length > 1 && candidatePicker) {
+      printCandidates(candidates, scores);
+      index = await candidatePicker(candidates.length);
+      if (index < 0) return;
+    } else if (scores[0] >= AUTO_PICK_THRESHOLD) {
+      if (candidates.length > 1) {
+        printCandidates(candidates, scores);
+        console.log(`(auto-picking 1 — ${Math.round(scores[0] * 100)}% title match; rerun with --pick N to choose another)\n`);
+      }
+    } else {
+      printCandidates(candidates, scores);
+      console.log('No confident title match — pick one with --pick N, or refine the query.\n');
+      return;
+    }
     await presentAndSummarize(candidates[index], { allowUniLink });
   }
 
