@@ -736,18 +736,26 @@ function mergeCandidates(groups) {
 }
 
 async function findOpenPdf(paper) {
-  const candidates = [paper.pdf];
-  if (paper.arxivId) candidates.push(`https://arxiv.org/pdf/${paper.arxivId}`);
-  if (paper.doi && process.env.UNPAYWALL_EMAIL) {
-    try {
-      const json = JSON.parse(await httpGetText(`https://api.unpaywall.org/v2/${encodeURIComponent(paper.doi)}?email=${encodeURIComponent(process.env.UNPAYWALL_EMAIL)}`));
-      const best = json.best_oa_location?.url_for_pdf ?? json.best_oa_location?.url;
-      if (best) candidates.push(best);
-    } catch {
-      /* unpaywall is best-effort */
+    const candidates = [paper.pdf];
+    if (paper.arxivId) candidates.push(`https://arxiv.org/pdf/${paper.arxivId}`);
+    if (paper.doi && process.env.UNPAYWALL_EMAIL) {
+      try {
+        const json = JSON.parse(await httpGetText(`https://api.unpaywall.org/v2/${encodeURIComponent(paper.doi)}?email=${encodeURIComponent(process.env.UNPAYWALL_EMAIL)}`));
+        const best = json.best_oa_location?.url_for_pdf ?? json.best_oa_location?.url;
+        if (best) {
+          candidates.push(best);
+          const host = new URL(best).host;
+          console.log(`[agent] Unpaywall: open-access copy found (${host})`);
+        } else {
+          console.log('[agent] Unpaywall: no open-access copy for this DOI');
+        }
+      } catch {
+        /* unpaywall is best-effort */
+      }
+    } else if (paper.doi) {
+      console.log('[agent] tip: set UNPAYWALL_EMAIL in .env for open-access copy lookup');
     }
-  }
-  for (const url of candidates.filter(Boolean)) {
+    for (const url of candidates.filter(Boolean)) {
     try {
       const response = await fetch(url, {
         headers: { 'User-Agent': BROWSER_UA },
