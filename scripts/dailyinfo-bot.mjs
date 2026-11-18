@@ -105,7 +105,12 @@ function buildModelChain() {
     .map((model) => providerEntry(PROVIDER, model));
   for (const provider of ['gemini', 'openrouter', 'glm']) {
     if (provider !== PROVIDER && PROVIDER_KEY[provider]) {
-      chain.push(providerEntry(provider, PROVIDER_MODEL[provider]));
+      // Other providers join with their FULL default chains, so their own
+      // fallbacks (e.g. OpenRouter's Ling) are preserved as last resorts.
+      const defaults = [PROVIDER_MODEL[provider], ...(PROVIDER_FALLBACK[provider] || '').split(',')]
+        .map((model) => model.trim())
+        .filter(Boolean);
+      for (const model of defaults) chain.push(providerEntry(provider, model));
     }
   }
   return chain;
@@ -1164,11 +1169,22 @@ async function runCommand(corpus, input) {
         // them on top of upstream instead. Conflicts abort cleanly.
         pull = spawnSync('git', ['pull', '--rebase', ...pullFrom], { cwd: repo, encoding: 'utf8' });
       }
-      console.log(pull.stdout.trim() || pull.stderr.trim() || '(git pull produced no output)');
-      if (pull.status !== 0) {
-        console.error('[bot] git pull failed â€” resolve it manually, then run translate.');
-        return true;
-      }
+        console.log(pull.stdout.trim() || pull.stderr.trim() || '(git pull produced no output)');
+        if (pull.status !== 0) {
+          console.error('[bot] git pull failed — resolve it manually, then run translate.');
+          console.error('[bot] *** LOCAL CORPUS MAY BE STALE — search/ask will miss the newest days until the sync succeeds. ***');
+          return true;
+        }
+        // Verify the sync actually landed: the whole point of 'update' is that
+        // the LOCAL corpus matches upstream. A silent partial sync is what left
+        // search unable to find freshly published papers once before.
+        if (pullFrom.length) {
+          const behind = spawnSync('git', ['rev-list', '--count', 'HEAD..upstream/main'], { cwd: repo, encoding: 'utf8' });
+          if (behind.status === 0 && Number(behind.stdout.trim()) > 0) {
+            console.error(`[bot] *** WARNING: local corpus is ${behind.stdout.trim()} commit(s) behind upstream — the sync did NOT fully apply. Resolve git state manually. ***`);
+            process.exitCode = 1;
+          }
+        }
       const fresh = { items: loadItems(), briefings: loadBriefings() };
       console.error(`[bot] corpus after pull: ${fresh.items.length} items, ${fresh.briefings.length} briefings (${listDates(fresh.briefings).length} dates)`);
       const pending = listDates(fresh.briefings).filter((date) =>
