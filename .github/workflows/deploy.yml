@@ -7,9 +7,14 @@ on:
   push:
     branches: [main]
   schedule:
-    # 23:00 UTC = 07:00 Asia/Shanghai, after the upstream pipeline's
-    # overnight publish (~03:30 +08:00). Also deployable manually.
+    # Upstream publishes categories in WAVES through the morning Beijing time
+    # (ai_news early, then arxiv/code/papers/resource), so one snapshot at
+    # 07:00 only ever captures the first wave. Three crons follow the waves:
+    #   23:00 UTC = 07:00 +08:00, 00:30 UTC = 08:30, 02:00 UTC = 10:00
+    # Cached runs cost ~0 API calls; each deploys whatever is new.
     - cron: '0 23 * * *'
+    - cron: '30 0 * * *'
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -27,7 +32,9 @@ env:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Queue instead of cancel: a second wave-catch-up run waiting behind a
+  # still-running translation is cheaper than discarding its work.
+  cancel-in-progress: false
 
 jobs:
   build:
