@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * DailyInfo Bot â€” English translation + Q&A over the publication corpus.
+ * DailyInfo Bot Ã¢â‚¬â€ English translation + Q&A over the publication corpus.
  *
  *   npm run bot                          interactive session
  *   npm run bot -- translate [date]      English rendering of a day's briefings
@@ -9,18 +9,18 @@
  *   npm run bot -- dates                 list dates that have briefings
  *
  * Requires an LLM key for translate/ask:
- *   OPENROUTER_API_KEY  â€” https://openrouter.ai (free tier models supported)
- *   GLM_API_KEY         â€” https://open.bigmodel.cn (glm-4-flash is free)
+ *   OPENROUTER_API_KEY  Ã¢â‚¬â€ https://openrouter.ai (free tier models supported)
+ *   GLM_API_KEY         Ã¢â‚¬â€ https://open.bigmodel.cn (glm-4-flash is free)
  * OPENROUTER_API_KEY wins when both are set.
  * Optional: BOT_MODEL (default: a free OpenRouter model, or glm-4-flash for
  * Zhipu), BOT_FALLBACK_MODELS (comma-separated chain tried in order when the
- * primary model fails â€” default includes Ling 3.2 Flash free), BOT_BASE_URL
+ * primary model fails Ã¢â‚¬â€ default includes Ling 3.2 Flash free), BOT_BASE_URL
  * (endpoint override, e.g. for testing).
  *
  * Translations are cached under runtime/bot-cache/ (gitignored) as markdown
  * files with a small frontmatter header (date/category/title/generated_at).
  * The Astro build picks them up as the `en_briefings` collection and renders
- * them at /en/ â€” locally. On deploys the cache is absent, so /en/ is simply
+ * them at /en/ Ã¢â‚¬â€ locally. On deploys the cache is absent, so /en/ is simply
  * empty and the canonical publication contract stays untouched.
  */
 import { createInterface } from 'node:readline/promises';
@@ -82,7 +82,7 @@ const PRIMARY_MODEL = process.env.BOT_MODEL || PROVIDER_MODEL[PROVIDER] || '';
 // Failover chain: tried in order when the primary model fails (model gone,
 // upstream errors, reasoning models that return nothing, or a Gemini region
 // block). After the primary provider's models, the OTHER configured providers
-// are appended as last-resort â€” one provider going down never kills a job.
+// are appended as last-resort Ã¢â‚¬â€ one provider going down never kills a job.
 const FALLBACK_MODELS = (
   process.env.BOT_FALLBACK_MODELS ?? (PROVIDER_FALLBACK[PROVIDER] || '')
 ).split(',').map((model) => model.trim()).filter(Boolean);
@@ -119,9 +119,9 @@ const MODEL_CHAIN = buildModelChain();
 
 const missingKeyMessage =
   'No LLM API key is set. Set one of (in .env or environment):\n' +
-  '  GEMINI_API_KEY      â€” https://aistudio.google.com/apikey  (largest free tier, recommended)\n' +
-  '  OPENROUTER_API_KEY  â€” https://openrouter.ai/keys          (free models, 50 req/day)\n' +
-  '  GLM_API_KEY         â€” https://open.bigmodel.cn            (glm-4-flash is free)';
+  '  GEMINI_API_KEY      Ã¢â‚¬â€ https://aistudio.google.com/apikey  (largest free tier, recommended)\n' +
+  '  OPENROUTER_API_KEY  Ã¢â‚¬â€ https://openrouter.ai/keys          (free models, 50 req/day)\n' +
+  '  GLM_API_KEY         Ã¢â‚¬â€ https://open.bigmodel.cn            (glm-4-flash is free)';
 
 const ASK_CONTEXT_ITEMS = 8;
 const ASK_SUMMARY_CHARS = 700;
@@ -300,7 +300,7 @@ async function chatWithModel(entry, messages, { maxTokens = 4096, temperature = 
         }
         const error = new Error(`LLM API (${entry.provider}:${entry.model}) ${response.status}: ${detail}`);
         // 429 (daily/rate cap) and auth/config errors never improve by
-        // retrying the same model â€” fail over (or stop) immediately.
+        // retrying the same model Ã¢â‚¬â€ fail over (or stop) immediately.
         if ([401, 403, 429].includes(response.status)) {
           throw Object.assign(error, { failover: true, noFallback: response.status !== 429 });
         }
@@ -347,12 +347,12 @@ async function chat(messages, options = {}) {
     }
   }
   throw new Error(
-    `All ${errors.length} model(s) failed (${MODEL_CHAIN.map((entry) => `${entry.provider}:${entry.model}`).join(' -> ')}):\n${errors.map((error) => `â€” ${error.message}`).join('\n')}`,
+    `All ${errors.length} model(s) failed (${MODEL_CHAIN.map((entry) => `${entry.provider}:${entry.model}`).join(' -> ')}):\n${errors.map((error) => `Ã¢â‚¬â€ ${error.message}`).join('\n')}`,
   );
 }
 
 // ---------------------------------------------------------------------------
-// translate â€” English rendering of a day's briefings, cached on disk
+// translate Ã¢â‚¬â€ English rendering of a day's briefings, cached on disk
 // ---------------------------------------------------------------------------
 
 const TRANSLATE_SYSTEM =
@@ -360,7 +360,7 @@ const TRANSLATE_SYSTEM =
   'Translate faithfully and completely. Keep the markdown structure exactly: ' +
   'headings, bold, dates in brackets, links, and any identifiers stay as-is. ' +
   'Keep university/company/product proper nouns natural in English ' +
-  '(transliterate Chinese names, e.g. å¤§è¿žç†å·¥å¤§å­¦ -> Dalian University of Technology). ' +
+  '(transliterate Chinese names, e.g. Ã¥Â¤Â§Ã¨Â¿Å¾Ã§Ââ€ Ã¥Â·Â¥Ã¥Â¤Â§Ã¥Â­Â¦ -> Dalian University of Technology). ' +
   'Output ONLY the translated markdown, no commentary.';
 
 function splitChunks(text, limit = TRANSLATE_CHUNK_CHARS) {
@@ -404,12 +404,12 @@ async function translateBriefing(corpus, briefing, { refresh }) {
       { maxTokens: 4096 },
     ));
   }
-  const header = `# ${briefing.category} â€” ${briefing.date} (English edition)\n\n`;
+  const header = `# ${briefing.category} Ã¢â‚¬â€ ${briefing.date} (English edition)\n\n`;
   const frontmatter = [
     '---',
     `date: "${briefing.date}"`,
     `category: "${briefing.category}"`,
-    `title: "${briefing.category} briefing ${briefing.date} â€” English"`,
+    `title: "${briefing.category} briefing ${briefing.date} Ã¢â‚¬â€ English"`,
     `generated_at: "${new Date().toISOString()}"`,
     '---',
     '',
@@ -447,21 +447,21 @@ async function translateCommand(corpus, argString, { refresh }) {
     console.log(`No briefings for ${date}${category ? ` #${category}` : ''}. Available: ${listDates(corpus.briefings).join(', ')}`);
     return;
   }
-  console.log(`\n=== DailyInfo ${date} â€” English edition${refresh ? ' (fresh)' : ''} ===\n`);
+  console.log(`\n=== DailyInfo ${date} Ã¢â‚¬â€ English edition${refresh ? ' (fresh)' : ''} ===\n`);
   for (const briefing of briefings) {
     const { text, cached } = await translateBriefing(corpus, briefing, { refresh });
     console.log(text.trimEnd());
-    console.log(cached ? '\n(cached â€” use: bot translate --refresh)\n' : '');
+    console.log(cached ? '\n(cached Ã¢â‚¬â€ use: bot translate --refresh)\n' : '');
   }
 }
 
 // ---------------------------------------------------------------------------
-// ask â€” search the corpus, then have GLM answer in English
+// ask Ã¢â‚¬â€ search the corpus, then have GLM answer in English
 // ---------------------------------------------------------------------------
 
 function buildContext(items) {
   return items.map((item) => {
-    const summary = item.summary.length > ASK_SUMMARY_CHARS ? `${item.summary.slice(0, ASK_SUMMARY_CHARS)}â€¦` : item.summary;
+    const summary = item.summary.length > ASK_SUMMARY_CHARS ? `${item.summary.slice(0, ASK_SUMMARY_CHARS)}Ã¢â‚¬Â¦` : item.summary;
     const lines = [
       `- id: ${item.category}/${item.id}`,
       `  date: ${item.publishedAt.slice(0, 10) || 'unknown'} | source: ${item.source || 'unknown'}`,
@@ -514,7 +514,7 @@ async function askCommand(corpus, question) {
 }
 
 // ---------------------------------------------------------------------------
-// search â€” raw corpus search, no LLM
+// search Ã¢â‚¬â€ raw corpus search, no LLM
 // ---------------------------------------------------------------------------
 
 function searchCommand(corpus, query) {
@@ -526,18 +526,18 @@ function searchCommand(corpus, query) {
   console.log(`\n${matches.length} match(es) for "${query}" (best first):\n`);
   for (const item of matches) {
     const score = Math.round(relevanceScore(item, query) * 100);
-    console.log(`  [${item.category}] ${item.id} — ${score}% title match`);
+    console.log(`  [${item.category}] ${item.id} â€” ${score}% title match`);
     console.log(`    ${item.title}`);
     if (item.source) console.log(`    source: ${item.source} | ${item.publishedAt.slice(0, 10)}`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Paper agent â€” search the web, fetch the paper, summarize it
+// Paper agent Ã¢â‚¬â€ search the web, fetch the paper, summarize it
 //
-// Flow: query/URL/DOI â†’ free scholarly APIs (arXiv, Semantic Scholar, Crossref)
-// â†’ best match â†’ open-access PDF (arXiv / Semantic Scholar / Unpaywall) â†’
-// text extraction â†’ map-reduce LLM summary. Paywalled papers fall back to a
+// Flow: query/URL/DOI Ã¢â€ â€™ free scholarly APIs (arXiv, Semantic Scholar, Crossref)
+// Ã¢â€ â€™ best match Ã¢â€ â€™ open-access PDF (arXiv / Semantic Scholar / Unpaywall) Ã¢â€ â€™
+// text extraction Ã¢â€ â€™ map-reduce LLM summary. Paywalled papers fall back to a
 // one-click institutional link (UNI_EZPROXY_URL) and a drop folder:
 // save the PDF to runtime/papers/ and run `summarize <name>`.
 // ---------------------------------------------------------------------------
@@ -591,13 +591,13 @@ function slugifyFile(text) {
 }
 
 function normalizeSearchQuery(query) {
-  // Colons etc. are arXiv field-query syntax â€” a pasted title like
+  // Colons etc. are arXiv field-query syntax Ã¢â‚¬â€ a pasted title like
   // "SWIFT: Sample-Wise ..." breaks the API unless stripped first.
   return String(query).replaceAll(/["']/g, ' ').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function splitName(name) {
-  // "Jane Alice Doe" -> { family: 'Doe', given: 'Jane Alice' } â€” heuristic;
+  // "Jane Alice Doe" -> { family: 'Doe', given: 'Jane Alice' } Ã¢â‚¬â€ heuristic;
   // bibliography-grade name parsing is out of scope, this matches what
   // Crossref/Semantic Scholar supply well enough for citation records.
   const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
@@ -628,7 +628,7 @@ function parseArxivEntry(block) {
 
 async function searchArxiv(query) {
   const cleaned = normalizeSearchQuery(query);
-  // Exact phrase first, then plain keywords â€” brand-new papers need the
+  // Exact phrase first, then plain keywords Ã¢â‚¬â€ brand-new papers need the
   // loose form when the phrase index lags.
   for (const attempt of [`"${cleaned}"`, cleaned]) {
     const url = `https://export.arxiv.org/api/query?search_query=${encodeURIComponent(`all:${attempt}`)}&max_results=${FETCH_TARGETS}&sortBy=relevance`;
@@ -689,12 +689,12 @@ async function searchSemanticScholar(query) {
     })).filter((paper) => paper.title);
   }
 
-/** Crossref bibliographic search â€” the index that covers JOURNAL papers
+/** Crossref bibliographic search Ã¢â‚¬â€ the index that covers JOURNAL papers
  * (Journal of Hydrology, Nature, ...) that never touch arXiv. */
 async function searchCrossref(query) {
     const cleaned = normalizeSearchQuery(query);
     const select = ['DOI', 'title', 'author', 'issued', 'container-title', 'abstract'].join(',');
-    // mailto joins Crossref's "polite pool" â€” far better rate limits than the
+    // mailto joins Crossref's "polite pool" Ã¢â‚¬â€ far better rate limits than the
     // anonymous shared pool that bursts into 429s.
     const mailto = process.env.UNPAYWALL_EMAIL ? `&mailto=${encodeURIComponent(process.env.UNPAYWALL_EMAIL)}` : '';
     const url = `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(cleaned)}&rows=${FETCH_TARGETS}&select=${select}${mailto}`;
@@ -736,7 +736,7 @@ async function resolveDoi(doi) {
       url: `https://doi.org/${doi}`,
     };
   if (!paper.abstract) {
-    // Crossref often omits abstracts (e.g. Nature) â€” Semantic Scholar has them.
+    // Crossref often omits abstracts (e.g. Nature) Ã¢â‚¬â€ Semantic Scholar has them.
     try {
         const enrichment = JSON.parse(await httpGetText(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=abstract,authors,openAccessPdf,externalIds`));
         paper.abstract = cleanWhitespace(enrichment.abstract ?? '');
@@ -762,7 +762,7 @@ async function resolvePaperUrl(rawUrl) {
   // The capture stops at query/hash/whitespace.
   const doi = rawUrl.match(/(10\.\d{4,9}\/[^\s"'?#&]+)/i)?.[1];
   if (doi) return [await resolveDoi(doi)];
-  throw new Error('Unsupported URL â€” use an arXiv link (abs/pdf/html), a bare DOI, any publisher URL containing a DOI, or a search query.');
+  throw new Error('Unsupported URL Ã¢â‚¬â€ use an arXiv link (abs/pdf/html), a bare DOI, any publisher URL containing a DOI, or a search query.');
 }
 
 function mergeCandidates(groups) {
@@ -825,7 +825,7 @@ async function findOpenPdf(paper) {
           return dest;
         }
         // Landing page instead of a PDF? Publisher pages carry the standard
-        // citation_pdf_url meta tag â€” Unpaywall often only knows the landing
+        // citation_pdf_url meta tag Ã¢â‚¬â€ Unpaywall often only knows the landing
         // page (Copernicus, Nature, Elsevier all use this).
         const html = buffer.toString('utf8');
         const pdfLink = html.match(/<meta[^>]+name=["']citation_pdf_url["'][^>]+content=["']([^"']+)["']/i)?.[1]
@@ -871,7 +871,7 @@ async function summarizeText(text) {
   }
   const notes = [];
   for (const [index, chunk] of chunks.entries()) {
-    process.stdout.write(`\r[agent] reading part ${index + 1}/${chunks.length}â€¦`);
+    process.stdout.write(`\r[agent] reading part ${index + 1}/${chunks.length}Ã¢â‚¬Â¦`);
     if (index) await pace();
     notes.push(await chat(
       [
@@ -905,16 +905,16 @@ function relevanceScore(paper, query) {
 function printCandidates(candidates, scores = []) {
   console.log(`\nFound ${candidates.length} candidate(s):\n`);
   candidates.forEach((paper, index) => {
-    const score = scores[index] != null ? ` Â· ${Math.round(scores[index] * 100)}% match` : '';
+    const score = scores[index] != null ? ` Ã‚Â· ${Math.round(scores[index] * 100)}% match` : '';
     console.log(`  ${index + 1}. [${paper.year || '????'}] ${paper.title}`);
-    console.log(`     ${[paper.venue, paper.provider, paper.citations != null ? `${paper.citations} citations` : ''].filter(Boolean).join(' Â· ')}${score}`);
+    console.log(`     ${[paper.venue, paper.provider, paper.citations != null ? `${paper.citations} citations` : ''].filter(Boolean).join(' Ã‚Â· ')}${score}`);
   });
   console.log('');
 }
 
 let lastFetchedPaper = null;
 
-/** The most recent paper the agent presented â€” the save targets (zotero/ris)
+/** The most recent paper the agent presented Ã¢â‚¬â€ the save targets (zotero/ris)
  * operate on this, always on explicit user action. */
 function getLastFetchedPaper() {
   return lastFetchedPaper;
@@ -930,20 +930,20 @@ async function presentAndSummarize(paper, { allowUniLink = false } = {}) {
     }
     if (paper.venue || paper.year) console.log(`Venue: ${[paper.venue, paper.year].filter(Boolean).join(', ')}`);
     let filePath = '';
-  process.stdout.write('[agent] looking for an open-access PDFâ€¦\n');
+  process.stdout.write('[agent] looking for an open-access PDFÃ¢â‚¬Â¦\n');
   if (paper.abstract || paper.title) filePath = await findOpenPdf(paper);
   if (filePath) {
     console.log(`[agent] PDF saved: ${filePath}`);
-    process.stdout.write('[agent] extracting textâ€¦\n');
+    process.stdout.write('[agent] extracting textÃ¢â‚¬Â¦\n');
     const text = await extractPdfText(filePath);
     if (text.length < 500) throw new Error('The PDF has no extractable text (likely a scan). Save a text-rich copy manually and use: summarize <file>');
-    console.log(`[agent] ${text.length.toLocaleString()} chars extracted â€” summarizingâ€¦\n`);
+    console.log(`[agent] ${text.length.toLocaleString()} chars extracted Ã¢â‚¬â€ summarizingÃ¢â‚¬Â¦\n`);
     const summary = await summarizeText(text);
     console.log(`\n${summary}\n`);
     console.log('Keep it: type "zotero" (save to Zotero library) or "ris" (citation file for Mendeley).');
     return;
   }
-  // Paywalled â€” hybrid fallback: institutional link (only if you confirm) + drop folder.
+  // Paywalled Ã¢â‚¬â€ hybrid fallback: institutional link (only if you confirm) + drop folder.
   const landing = paper.url || (paper.doi ? `https://doi.org/${paper.doi}` : '');
   const proxy = process.env.UNI_EZPROXY_URL;
   console.log('\nNo open-access PDF found (paywalled).');
@@ -955,21 +955,21 @@ async function presentAndSummarize(paper, { allowUniLink = false } = {}) {
       if (uniWanted) {
         if (/webvpn/i.test(proxy)) {
           // Chinese university WebVPN gateways drop you at the portal home
-          // after login instead of honoring ?url= â€” the reliable path is the
+          // after login instead of honoring ?url= Ã¢â‚¬â€ the reliable path is the
           // portal's own address bar.
           const webvpnHome = proxy.replace(/\/login\?url=$/i, '').replace(/\/+$/, '');
           console.log(`
-University access (WebVPN) â€” 3 steps:
+University access (WebVPN) Ã¢â‚¬â€ 3 steps:
   1. Open  ${webvpnHome}  and log in with your student account
   2. In the WebVPN portal's address bar, paste this link:
        ${landing}
-  3. The publisher page opens through the campus network â€” download the PDF from there`);
+  3. The publisher page opens through the campus network Ã¢â‚¬â€ download the PDF from there`);
         } else {
           console.log(`\nOpen through your university access (you log in yourself in the browser):\n  ${proxy}${encodeURIComponent(landing)}`);
         }
       } else {
       console.log(`\nPaper page: ${landing}`);
-      console.log('(university access link withheld â€” in the REPL answer y, or rerun with --uni)');
+      console.log('(university access link withheld Ã¢â‚¬â€ in the REPL answer y, or rerun with --uni)');
     }
   } else if (landing) {
     console.log(`\nPaper page: ${landing}`);
@@ -996,7 +996,7 @@ async function fetchCommand(corpus, rawArgument) {
   const pickMatch = rawArgument.match(/--pick\s+(\d+)/i);
   const allowUniLink = /--uni/i.test(rawArgument);
   if (!argument) throw new Error('Usage: fetch <query | arxiv-url | doi>   e.g. fetch "attention is all you need"');
-  process.stdout.write('[agent] searching the webâ€¦\n');
+  process.stdout.write('[agent] searching the webÃ¢â‚¬Â¦\n');
   let candidates;
   if (/^https?:\/\//i.test(argument) || /^\d{4}\.\d{4,5}(v\d+)?$/i.test(argument)) {
     candidates = await resolvePaperUrl(argument);
@@ -1011,13 +1011,13 @@ async function fetchCommand(corpus, rawArgument) {
       candidates = mergeCandidates([crossref, s2, arxiv]);
       if (!candidates.length) {
         // Brand-new papers are often not indexed by the search APIs yet, but
-        // your own DailyInfo corpus already tracks them â€” use its source link.
+        // your own DailyInfo corpus already tracks them Ã¢â‚¬â€ use its source link.
         // Same relevance gate as auto-pick: a single shared keyword is not a
         // match, otherwise a stray dataset item gets fetched instead.
         const localMatch = search(corpus, normalizeSearchQuery(argument))
           .find((item) => item.sourceUrl && relevanceScore({ title: item.title }, argument) >= 0.55);
         if (localMatch) {
-          console.log(`[agent] not indexed by the search APIs yet â€” found it in your corpus: [${localMatch.category}/${localMatch.id}] (${localMatch.title})`);
+          console.log(`[agent] not indexed by the search APIs yet Ã¢â‚¬â€ found it in your corpus: [${localMatch.category}/${localMatch.id}] (${localMatch.title})`);
           candidates = await resolvePaperUrl(localMatch.sourceUrl);
         }
       }
@@ -1027,7 +1027,7 @@ async function fetchCommand(corpus, rawArgument) {
       return;
     }
     // Relevance gate: the top candidate must share enough of the query's
-    // title tokens before the agent is allowed to choose on its own â€”
+    // title tokens before the agent is allowed to choose on its own Ã¢â‚¬â€
     // otherwise the list is shown and the user decides.
     const AUTO_PICK_THRESHOLD = 0.55;
     const scores = candidates.map((candidate) => relevanceScore(candidate, argument));
@@ -1045,11 +1045,11 @@ async function fetchCommand(corpus, rawArgument) {
     } else if (scores[0] >= AUTO_PICK_THRESHOLD) {
       if (candidates.length > 1) {
         printCandidates(candidates, scores);
-        console.log(`(auto-picking 1 â€” ${Math.round(scores[0] * 100)}% title match; rerun with --pick N to choose another)\n`);
+        console.log(`(auto-picking 1 Ã¢â‚¬â€ ${Math.round(scores[0] * 100)}% title match; rerun with --pick N to choose another)\n`);
       }
     } else {
       printCandidates(candidates, scores);
-      console.log('No confident title match â€” pick one with --pick N, or refine the query.\n');
+      console.log('No confident title match Ã¢â‚¬â€ pick one with --pick N, or refine the query.\n');
       return;
     }
     await presentAndSummarize(candidates[index], { allowUniLink });
@@ -1062,15 +1062,51 @@ async function summarizeCommand(argument) {
   const found = direct || (existsSync(inPapers) ? inPapers : '');
   if (!found) {
     const available = existsSync(papersDir) ? readdirSync(papersDir).filter((name) => name.endsWith('.pdf')) : [];
-    console.log(`\nNo PDF found for "${argument}".${available.length ? ` Available in runtime/papers: ${available.join(', ')}` : ' runtime/papers/ is empty â€” save a PDF there first.'}`);
+    console.log(`\nNo PDF found for "${argument}".${available.length ? ` Available in runtime/papers: ${available.join(', ')}` : ' runtime/papers/ is empty Ã¢â‚¬â€ save a PDF there first.'}`);
     return;
   }
-  console.log(`\n[agent] summarizing ${found}â€¦`);
+  console.log(`\n[agent] summarizing ${found}Ã¢â‚¬Â¦`);
   const text = await extractPdfText(found);
   if (text.length < 500) throw new Error('No extractable text in this PDF (likely a scanned image).');
   const summary = await summarizeText(text);
   console.log(`\n${summary}\n`);
 }
+
+/**
+   * After a successful local update, trigger the cloud deploy so the WEBSITE
+   * gets the new days too — an update through the CLI or web UI otherwise
+   * only fixes the local disk. Guards:
+   *   - skipped inside GitHub Actions (the workflow deploys itself; a
+   *     dispatch from CI would loop)
+   *   - skipped with DAILYINFO_NO_DEPLOY=1
+   *   - offline / gh missing: clear warning, never fatal (local sync already
+   *     succeeded; the next successful update retries the deploy)
+   */
+  function dispatchDeploy() {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.error('[bot] CI detected — deploy dispatch skipped (workflow deploys itself).');
+      return;
+    }
+    if (process.env.DAILYINFO_NO_DEPLOY === '1') {
+      console.error('[bot] DAILYINFO_NO_DEPLOY=1 — deploy dispatch skipped.');
+      return;
+    }
+    const originUrl = spawnSync('git', ['config', '--get', 'remote.origin.url'], { cwd: repo, encoding: 'utf8' }).stdout.trim();
+    const slug = originUrl.match(/github\.com[:/](.+?)(?:\.git)?\/?$/i)?.[1];
+    if (!slug) {
+      console.error(`[bot] origin is not a GitHub repo (${originUrl || 'unset'}) — deploy dispatch skipped.`);
+      return;
+    }
+    const gh = spawnSync('gh', ['workflow', 'run', 'deploy.yml', '-R', slug, '--ref', 'main'], { cwd: repo, encoding: 'utf8' });
+    if (gh.status === 0) {
+      console.log(`[bot] deploy dispatched → https://github.com/${slug}/actions (site updates in a few minutes).`);
+    } else {
+      console.error('[bot] *** deploy dispatch failed (offline, or gh is not installed/authenticated). ***');
+      console.error('[bot] The LOCAL corpus is synced; the website will catch up on the next successful update,');
+      console.error(`[bot] or dispatch manually once connected: gh workflow run deploy.yml -R ${slug} --ref main`);
+      process.exitCode = 1;
+    }
+  }
 
 function papersCommand() {
     const files = existsSync(papersDir) ? readdirSync(papersDir).filter((name) => name.endsWith('.pdf')) : [];
@@ -1085,7 +1121,7 @@ function papersCommand() {
 
   async function zoteroCommand() {
     const paper = getLastFetchedPaper();
-    if (!paper) throw new Error('No paper fetched in this session yet â€” run fetch first.');
+    if (!paper) throw new Error('No paper fetched in this session yet Ã¢â‚¬â€ run fetch first.');
     const { saveToZoteroLocal, pingZotero } = await import('./zotero.mjs');
     if (!(await pingZotero())) {
       console.log('\nZotero is not running. Open the Zotero desktop app, then run: zotero\n');
@@ -1097,7 +1133,7 @@ function papersCommand() {
 
   async function risCommand() {
     const paper = getLastFetchedPaper();
-    if (!paper) throw new Error('No paper fetched in this session yet â€” run fetch first.');
+    if (!paper) throw new Error('No paper fetched in this session yet Ã¢â‚¬â€ run fetch first.');
     const { writeRis } = await import('./zotero.mjs');
     const path = writeRis(paper);
     console.log(`\nCitation file written: ${path}`);
@@ -1108,7 +1144,7 @@ function papersCommand() {
 // CLI / REPL
 // ---------------------------------------------------------------------------
 
-const HELP = `DailyInfo Bot â€” English translation + Q&A + paper agent
+const HELP = `DailyInfo Bot Ã¢â‚¬â€ English translation + Q&A + paper agent
 
   translate [date] [category]   English edition of a day's briefings (default: latest, all)
                                  e.g. translate 2026-11-14 code | translate latest papers --refresh
@@ -1159,7 +1195,7 @@ async function runCommand(corpus, input) {
       return true;
     case 'update': {
       // One step: pull freshly published content (from the `upstream` remote
-      // when configured â€” the origin may be a stale fork), then translate
+      // when configured — the origin may be a stale fork), then translate
       // every briefing day not fully cached yet (cached files cost nothing).
       const remotes = spawnSync('git', ['remote'], { cwd: repo, encoding: 'utf8' }).stdout.split(/\s+/).filter(Boolean);
       const pullFrom = remotes.includes('upstream') ? ['upstream', 'main'] : [];
@@ -1169,22 +1205,36 @@ async function runCommand(corpus, input) {
         // them on top of upstream instead. Conflicts abort cleanly.
         pull = spawnSync('git', ['pull', '--rebase', ...pullFrom], { cwd: repo, encoding: 'utf8' });
       }
-        console.log(pull.stdout.trim() || pull.stderr.trim() || '(git pull produced no output)');
-        if (pull.status !== 0) {
-          console.error('[bot] git pull failed — resolve it manually, then run translate.');
-          console.error('[bot] *** LOCAL CORPUS MAY BE STALE — search/ask will miss the newest days until the sync succeeds. ***');
-          return true;
+      console.log(pull.stdout.trim() || pull.stderr.trim() || '(git pull produced no output)');
+      if (pull.status !== 0) {
+        console.error('[bot] git pull failed — resolve it manually, then run translate.');
+        console.error('[bot] *** LOCAL CORPUS MAY BE STALE — search/ask will miss the newest days until the sync succeeds. ***');
+        return true;
+      }
+      // Verify the sync actually landed: the whole point of 'update' is that
+      // the LOCAL corpus matches upstream. A silent partial sync is what left
+      // search unable to find freshly published papers once before.
+      let fullySynced = true;
+      if (pullFrom.length) {
+        const behind = spawnSync('git', ['rev-list', '--count', 'HEAD..upstream/main'], { cwd: repo, encoding: 'utf8' });
+        fullySynced = behind.status === 0 && Number(behind.stdout.trim()) === 0;
+        if (!fullySynced) {
+          console.error(`[bot] *** WARNING: local corpus is ${(behind.stdout || '?').trim()} commit(s) behind upstream — the sync did NOT fully apply. Resolve git state manually. ***`);
+          process.exitCode = 1;
         }
-        // Verify the sync actually landed: the whole point of 'update' is that
-        // the LOCAL corpus matches upstream. A silent partial sync is what left
-        // search unable to find freshly published papers once before.
-        if (pullFrom.length) {
-          const behind = spawnSync('git', ['rev-list', '--count', 'HEAD..upstream/main'], { cwd: repo, encoding: 'utf8' });
-          if (behind.status === 0 && Number(behind.stdout.trim()) > 0) {
-            console.error(`[bot] *** WARNING: local corpus is ${behind.stdout.trim()} commit(s) behind upstream — the sync did NOT fully apply. Resolve git state manually. ***`);
-            process.exitCode = 1;
-          }
+      }
+      // Backup push (outside CI): local main = upstream content + local
+      // tooling commits. Rebases rewrite hashes, so force-with-lease is the
+      // normal case; the lease refuses if origin moved unexpectedly. Keeps
+      // origin a live backup and the repo "active" (schedule registration).
+      if (fullySynced && process.env.GITHUB_ACTIONS !== 'true') {
+        const push = spawnSync('git', ['push', '--force-with-lease', 'origin', 'main'], { cwd: repo, encoding: 'utf8' });
+        if (push.status === 0) {
+          console.error('[bot] origin backed up (force-with-lease).');
+        } else {
+          console.error(`[bot] backup push skipped: ${(push.stderr || push.stdout || '').trim().split('\n')[0]}`);
         }
+      }
       const fresh = { items: loadItems(), briefings: loadBriefings() };
       console.error(`[bot] corpus after pull: ${fresh.items.length} items, ${fresh.briefings.length} briefings (${listDates(fresh.briefings).length} dates)`);
       const pending = listDates(fresh.briefings).filter((date) =>
@@ -1192,12 +1242,14 @@ async function runCommand(corpus, input) {
       );
       if (!pending.length) {
         console.log('All published days are already translated.');
+        dispatchDeploy();
         return true;
       }
       console.error(`[bot] translating ${pending.length} day(s): ${pending.join(', ')}`);
       for (const date of pending) {
         await translateCommand(fresh, date, { refresh: false });
       }
+      dispatchDeploy();
       return true;
     }
     case 'ask':
@@ -1240,7 +1292,7 @@ async function main() {
     await runCommand(corpus, args.join(' '));
     return;
   }
-    if (!API_KEY) console.error('[bot] No LLM key set â€” translate/ask/fetch need one; search/dates work without.\n');
+    if (!API_KEY) console.error('[bot] No LLM key set Ã¢â‚¬â€ translate/ask/fetch need one; search/dates work without.\n');
     usage();
     const readline = createInterface({ input: process.stdin, output: process.stdout, prompt: 'dailyinfo> ' });
     candidatePicker = async (count) => {
@@ -1270,7 +1322,7 @@ async function main() {
   readline.close();
 }
 
-// Only run the CLI/REPL when executed directly â€” the agent server imports
+// Only run the CLI/REPL when executed directly Ã¢â‚¬â€ the agent server imports
 // this module for its functions.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {

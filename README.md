@@ -195,15 +195,25 @@ Notes:
   (locally and on this fork's deployment); on machines without it, `/en/` is empty and
   the header link is hidden. The canonical publication contract is untouched.
 
-### Scheduled deployment (this fork)
+### Scheduled deployment (this fork — zero-touch)
 
-`.github/workflows/deploy.yml` runs:
+The pipeline runs itself; no human commands are needed:
 
-- **daily at 07:00 (Asia/Shanghai)** via GitHub Actions cron, plus on every push and on
-  manual dispatch
-- each run: merge the newest `iHeadWater/dailyinfo-web` content → translate new briefing
-  days (translation cache in Actions cache; already-cached days cost zero API calls) →
-  validate → test → check → build → deploy to GitHub Pages
+- **Windows scheduled task `DailyInfoUpdate`** (on the maintainer's machine): triggers at
+  **07:10 / 09:30 / 12:00 / 21:00** Asia/Shanghai, plus runs on wake if a slot was missed.
+  One command chain: sync the local corpus from upstream → translate new days → back up
+  local `main` to origin (`--force-with-lease`) → dispatch the cloud deploy. The log
+  (`runtime/update-log.txt`) carries explicit `*** WARNING ***` markers if the local sync
+  ever fails to catch up.
+- **GitHub Actions cron** (3 slots daily: 07:00 / 08:30 / 10:00 +08:00) + every push +
+  manual dispatch: merge the newest `iHeadWater/dailyinfo-web` content → translate new
+  briefing days (translation cache in Actions cache; already-cached days cost zero API
+  calls) → validate → test → check → build → deploy to GitHub Pages. GitHub's own cron
+  has proven unreliable on this repo, which is why the local task is the primary
+  trigger and the crons are a bonus.
+- Upstream publishes categories in **waves** through the morning (ai_news first, then
+  arxiv/code/papers/resource); the repeated slots exist so the deployed site catches
+  every wave instead of a single morning snapshot.
 
 ## Content ownership and fixtures
 
