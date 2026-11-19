@@ -3,6 +3,8 @@ name: Deploy DailyInfo Web to GitHub Pages
 # Runs: push to main, daily cron (23:00 UTC = 07:00 Asia/Shanghai), manual dispatch.
 # The local Windows task (DailyInfoUpdate, 07:10) also dispatches this workflow as a
 # reliable backstop — GitHub cron on free accounts can be delayed or dropped.
+# (Trigger re-registration: editing this file on the default branch is the
+# documented workaround when a fork stops receiving schedule/push events.)
 on:
   push:
     branches: [main]
